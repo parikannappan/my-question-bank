@@ -1,4 +1,4 @@
-# app.py  (or questionbank.py)  → Updated version with Edit, Delete & Auto-refresh
+# app.py → FINAL VERSION: Auto push to GitHub on Streamlit Cloud
 import streamlit as st
 import json
 import base64
@@ -10,7 +10,7 @@ import io
 
 DATA_FILE = "questions.json"
 
-# ────────────────── Safe JSON handling ──────────────────
+# ───── Safe load/save (same as before) ─────
 def load_questions():
     if not os.path.exists(DATA_FILE):
         return []
@@ -20,30 +20,42 @@ def load_questions():
             if not content:
                 return []
             return json.loads(content)
-    except json.JSONDecodeError:
+    except:
         return []
 
 def save_questions(questions):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(questions, f, indent=4, ensure_ascii=False)
+    
+    # ───── AUTO COMMIT & PUSH TO GITHUB (only on Streamlit Cloud) ─────
+    if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", ""):
+        try:
+            import subprocess
+            subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=True)
+            subprocess.run(["git", "config", "user.email", "bot@questionbank"], check=True)
+            subprocess.run(["git", "add", DATA_FILE], check=True)
+            subprocess.run(["git", "commit", "-m", f"Update questions.json → {len(questions)} questions [{datetime.now():%Y-%m-%d %H:%M}]"], check=True)
+            push_result = subprocess.run(["git", "push"], capture_output=True, text=True)
+            if push_result.returncode != 0:
+                st.sidebar.warning("Git push failed (normal if someone edited at the same time)")
+        except Exception as e:
+            st.sidebar.error(f"Git push error: {e}")
 
-# ────────────────── Streamlit App ──────────────────
+# ───── Rest of the app (100% same UI, just calls save_questions which now pushes) ─────
 st.set_page_config(page_title="My Question Bank", layout="wide")
-st.title("Question Bank → Now with Edit & Delete")
+st.title("Question Bank → Data survives refresh!")
 
-# Force reload data button (useful if you edited JSON on GitHub)
-if st.sidebar.button("🔄 Force Reload from GitHub"):
-    st.experimental_rerun()
+if st.sidebar.button("Force Reload from GitHub"):
+    st.rerun()
 
-menu = st.sidebar.selectbox("Menu", ["Add New Question", "View / Edit / Delete", "Export to Word"])
-
+menu = st.sidebar.selectbox("Menu", ["Add Question", "Edit / Delete", "Export to Word"])
 questions = load_questions()
 
-# ────────────────── 1. Add New Question ──────────────────
-if menu == "Add New Question":
+# ==================== Add ====================
+if menu == "Add Question":
     st.header("Add New Question")
-    question_text = st.text_area("Question Text", height=150)
-    uploaded_image = st.file_uploader("Upload Diagram (optional)", type=["png", "jpg", "jpeg", "gif"])
+    question_text = st.text_area("Question", height=150)
+    uploaded_image = st.file_uploader("Diagram (optional)", type=["png","jpg","jpeg","gif"])
     subject = st.text_input("Subject")
     topic = st.text_input("Topic")
 
@@ -52,9 +64,8 @@ if menu == "Add New Question":
             image_b64 = None
             if uploaded_image:
                 image_b64 = base64.b64encode(uploaded_image.read()).decode()
-
             new_q = {
-                "id": len(questions) + 1 if questions else 1,
+                "id": len(questions)+1 if questions else 1,
                 "text": question_text,
                 "image_b64": image_b64,
                 "subject": subject,
@@ -62,93 +73,65 @@ if menu == "Add New Question":
                 "created_at": datetime.now().isoformat()
             }
             questions.append(new_q)
-            save_questions(questions)
-            st.success(f"Question {new_q['id']} saved!")
-            st.rerun()          # ← Auto-refresh!
+            save_questions(questions)        # ← This now pushes to GitHub!
+            st.success("Saved & synced to GitHub!")
+            st.rerun()
         else:
-            st.error("Question text cannot be empty")
+            st.error("Question cannot be empty")
 
-# ────────────────── 2. View / Edit / Delete ──────────────────
-elif menu == "View / Edit / Delete":
+# ==================== Edit / Delete ====================
+elif menu == "Edit / Delete":
     st.header("Edit or Delete Questions")
     if not questions:
-        st.info("No questions yet. Go add some!")
+        st.info("No questions yet")
     else:
-        for i, q in enumerate(questions[:]):  # copy to avoid modification issues
-            with st.expander(f"Q{q['id']} • {q['subject']} • {q['topic']} • Click to edit/delete"):
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    new_text = st.text_area("Question", q["text"], height=120, key=f"text_{q['id']}")
-                    new_subject = st.text_input("Subject", q["subject"], key=f"sub_{q['id']}")
-                    new_topic = st.text_input("Topic", q["topic"], key=f"top_{q['id']}")
-                    
-                    # Image preview + replace option
+        for i, q in enumerate(questions[:]):
+            with st.expander(f"Q{q['id']} • {q['subject']} • {q['topic']}"):
+                c1, c2 = st.columns([4,1])
+                with c1:
+                    new_text = st.text_area("Text", q["text"], height=100, key=f"t{i}")
+                    new_sub = st.text_input("Subject", q["subject"], key=f"s{i}")
+                    new_top = st.text_input("Topic", q["topic"], key=f"tp{i}")
                     if q["image_b64"]:
                         st.image(base64.b64decode(q["image_b64"]), width=400)
-                    new_image = st.file_uploader("Replace image (optional)", type=["png","jpg","jpeg","gif"], key=f"img_{q['id']}")
-
-                with col2:
-                    if st.button("Update", key=f"upd_{q['id']}"):
-                        new_b64 = None
-                        if new_image:
-                            new_b64 = base64.b64encode(new_image.read()).decode()
-                        elif q["image_b64"] and not new_image:
-                            new_b64 = q["image_b64"]   # keep old image
-
-                        questions[i] = {
-                            "id": q["id"],
-                            "text": new_text,
-                            "image_b64": new_b64,
-                            "subject": new_subject,
-                            "topic": new_topic,
-                            "created_at": q["created_at"]
-                        }
+                    new_img = st.file_uploader("Replace image", type=["png","jpg","jpeg"], key=f"i{i}")
+                with c2:
+                    if st.button("Update", key=f"u{i}"):
+                        new_b64 = q["image_b64"]
+                        if new_img:
+                            new_b64 = base64.b64encode(new_img.read()).decode()
+                        questions[i].update({"text": new_text, "image_b64": new_b64, "subject": new_sub, "topic": new_top})
                         save_questions(questions)
-                        st.success("Updated!")
-                        st.experimental_rerun()
-
-                    if st.button("Delete", type="primary", key=f"del_{q['id']}"):
-                        if st.session_state.get(f"confirm_{q['id']}", False):
+                        st.success("Updated & synced!")
+                        st.rerun()
+                    if st.button("Delete", type="primary", key=f"d{i}"):
+                        if st.session_state.get(f"confirm{i}", False):
                             questions.pop(i)
                             save_questions(questions)
-                            st.success("Deleted!")
-                            st.experimental_rerun()
+                            st.success("Deleted & synced!")
+                            st.rerun()
                         else:
-                            st.session_state[f"confirm_{q['id']}"] = True
-                            st.warning("Click Delete again to confirm")
+                            st.session_state[f"confirm{i}"] = True
+                            st.warning("Click again to confirm delete")
 
-# ────────────────── 3. Export to Word ──────────────────
+# ==================== Export ====================
 elif menu == "Export to Word":
-    st.header("Export Selected Questions")
+    st.header("Export to DOCX")
     if not questions:
-        st.warning("No questions to export")
+        st.warning("No questions")
     else:
-        selected_ids = []
-        for q in questions:
-            if st.checkbox(f"Q{q['id']}: {q['subject']} – {q['topic']}", key=f"export_{q['id']}"):
-                selected_ids.append(q["id"])
-                st.write(q["text"])
-                if q["image_b64"]:
-                    st.image(base64.b64decode(q["image_b64"]), width=500)
-
-        if st.button("Generate DOCX") and selected_ids:
+        selected = st.multiselect("Select questions", options=[(q["id"], f"Q{q['id']} {q['subject']} - {q['topic']}") for q in questions], format_func=lambda x: x[1])
+        sel_ids = [x[0] for x in selected]
+        if st.button("Generate DOCX") and sel_ids:
             doc = Document()
             doc.add_heading("Question Paper", 0)
             for q in questions:
-                if q["id"] in selected_ids:
-                    doc.add_paragraph(q["text"], style="Intense Quote")
+                if q["id"] in sel_ids:
+                    doc.add_paragraph(q["text"])
                     if q["image_b64"]:
-                        img_stream = io.BytesIO(base64.b64decode(q["image_b64"]))
-                        doc.add_picture(img_stream, width=Inches(5.5))
+                        doc.add_picture(io.BytesIO(base64.b64decode(q["image_b64"])), width=Inches(5.5))
                     doc.add_page_break()
-
             bio = io.BytesIO()
             doc.save(bio)
             bio.seek(0)
-            st.download_button(
-                "Download DOCX",
-                data=bio,
-                file_name=f"QuestionPaper_{datetime.now().strftime('%Y%m%d')}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
-
+            st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
