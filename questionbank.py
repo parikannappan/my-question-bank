@@ -64,7 +64,7 @@ if menu == "Add New Question":
             questions.append(new_q)
             save_questions(questions)
             st.success(f"Question {new_q['id']} saved!")
-            st.experimental_rerun()          # ← Auto-refresh!
+            st.rerun()          # ← Auto-refresh!
         else:
             st.error("Question text cannot be empty")
 
@@ -151,3 +151,4 @@ elif menu == "Export to Word":
                 file_name=f"QuestionPaper_{datetime.now().strftime('%Y%m%d')}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
+
