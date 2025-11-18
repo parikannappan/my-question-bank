@@ -31,11 +31,13 @@ def load_questions():
         return []
 
 def save_questions(questions):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-      try:    
-        json.dump(questions, f, indent=4, ensure_ascii=False)
-      except Exception as e:
+ try:
+      with open(DATA_FILE, "w", encoding="utf-8") as f:      
+         json.dump(questions, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+            print("json dump error: {e}")
             st.error(f"json dump error: {e}")
+  
   
     
     # ───── AUTO COMMIT & PUSH TO GITHUB (only on Streamlit Cloud) ─────
@@ -146,5 +148,6 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
 
 
