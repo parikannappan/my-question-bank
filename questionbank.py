@@ -41,7 +41,7 @@ def save_questions(questions):
   
     
     # ───── AUTO COMMIT & PUSH TO GITHUB (only on Streamlit Cloud) ─────
-    if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", ""):
+if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", ""):
         try:
             import subprocess
             subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=True)
@@ -148,6 +148,7 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
 
 
 
