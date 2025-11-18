@@ -42,6 +42,8 @@ def save_questions(questions):
     
     # ───── AUTO COMMIT & PUSH TO GITHUB (only on Streamlit Cloud) ─────
 if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", ""):
+    try:
+            import subprocess
             # Check if we're in a git repository first
             result = subprocess.run(["git", "status"], capture_output=True, text=True)
             if result.returncode != 0:
@@ -67,7 +69,7 @@ if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", "")
             else:
                 st.warning("No changes to commit")
                 
-        except Exception as e:
+    except Exception as e:
             st.warning(f"Git sync failed (data saved locally): {e}")
     
     return True
@@ -166,6 +168,7 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
 
 
 
