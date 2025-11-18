@@ -42,17 +42,35 @@ def save_questions(questions):
     
     # ───── AUTO COMMIT & PUSH TO GITHUB (only on Streamlit Cloud) ─────
 if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", ""):
-        try:
-            import subprocess
-            subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=True)
-            subprocess.run(["git", "config", "user.email", "bot@questionbank"], check=True)
-            subprocess.run(["git", "add", DATA_FILE], check=True)
-            subprocess.run(["git", "commit", "-m", f"Update questions.json → {len(questions)} questions [{datetime.now():%Y-%m-%d %H:%M}]"], check=True)
-            push_result = subprocess.run(["git", "push"], capture_output=True, text=True)
-            if push_result.returncode != 0:
-                st.warning("Git push failed (normal if someone edited at the same time)")
+            # Check if we're in a git repository first
+            result = subprocess.run(["git", "status"], capture_output=True, text=True)
+            if result.returncode != 0:
+                st.warning("Not in a git repository - skipping git sync")
+                return True
+            
+            # Configure git
+            subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=False)
+            subprocess.run(["git", "config", "user.email", "bot@questionbank"], check=False)
+            
+            # Add and commit
+            subprocess.run(["git", "add", DATA_FILE], check=False)
+            commit_result = subprocess.run([
+                "git", "commit", "-m", 
+                f"Update questions.json → {len(questions)} questions [{datetime.now():%Y-%m-%d %H:%M}]"
+            ], capture_output=True, text=True)
+            
+            # Only push if commit was successful
+            if commit_result.returncode == 0:
+                push_result = subprocess.run(["git", "push"], capture_output=True, text=True)
+                if push_result.returncode != 0:
+                    st.warning(f"Git push failed: {push_result.stderr}")
+            else:
+                st.warning("No changes to commit")
+                
         except Exception as e:
-            st.error(f"Git push error: {e}")
+            st.warning(f"Git sync failed (data saved locally): {e}")
+    
+    return True
 
 # ───── Rest of the app (100% same UI, just calls save_questions which now pushes) ─────
 st.set_page_config(page_title="My Question Bank", layout="wide")
@@ -148,6 +166,7 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
 
 
 
