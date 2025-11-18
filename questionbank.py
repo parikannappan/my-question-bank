@@ -48,8 +48,6 @@ if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", "")
             result = subprocess.run(["git", "status"], capture_output=True, text=True)
             if result.returncode != 0:
                 st.warning("Not in a git repository - skipping git sync")
-                return True
-            
             # Configure git
             subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=False)
             subprocess.run(["git", "config", "user.email", "bot@questionbank"], check=False)
@@ -71,8 +69,6 @@ if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", "")
                 
     except Exception as e:
             st.warning(f"Git sync failed (data saved locally): {e}")
-    
-    return True
 
 # ───── Rest of the app (100% same UI, just calls save_questions which now pushes) ─────
 st.set_page_config(page_title="My Question Bank", layout="wide")
@@ -168,6 +164,7 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
 
 
 
