@@ -25,7 +25,11 @@ def load_questions():
 
 def save_questions(questions):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
+      try:    
         json.dump(questions, f, indent=4, ensure_ascii=False)
+      except Exception as e:
+            st.error(f"json dump error: {e}")
+  
     
     # ───── AUTO COMMIT & PUSH TO GITHUB (only on Streamlit Cloud) ─────
     if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", ""):
@@ -37,9 +41,9 @@ def save_questions(questions):
             subprocess.run(["git", "commit", "-m", f"Update questions.json → {len(questions)} questions [{datetime.now():%Y-%m-%d %H:%M}]"], check=True)
             push_result = subprocess.run(["git", "push"], capture_output=True, text=True)
             if push_result.returncode != 0:
-                st.sidebar.warning("Git push failed (normal if someone edited at the same time)")
+                st.warning("Git push failed (normal if someone edited at the same time)")
         except Exception as e:
-            st.sidebar.error(f"Git push error: {e}")
+            st.error(f"Git push error: {e}")
 
 # ───── Rest of the app (100% same UI, just calls save_questions which now pushes) ─────
 st.set_page_config(page_title="My Question Bank", layout="wide")
