@@ -48,7 +48,7 @@ if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", "")
             result = subprocess.run(["git", "status"], capture_output=True, text=True)
             if result.returncode != 0:
                 st.warning("Not in a git repository - skipping git sync")
-                return True
+            return True
             
             # Configure git
             subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=False)
@@ -168,6 +168,7 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
 
 
 
