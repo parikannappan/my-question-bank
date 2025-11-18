@@ -7,7 +7,13 @@ from datetime import datetime
 from docx import Document
 from docx.shared import Inches
 import io
-
+if st.sidebar.checkbox("Debug Mode"):
+    st.write("Current directory:", os.getcwd())
+    st.write("File exists:", os.path.exists(DATA_FILE))
+    if os.path.exists(DATA_FILE):
+        st.write("File size:", os.path.getsize(DATA_FILE))
+        with open(DATA_FILE, 'r') as f:
+            st.write("File content preview:", f.read()[:200])
 DATA_FILE = "questions.json"
 
 # ───── Safe load/save (same as before) ─────
@@ -139,3 +145,4 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
