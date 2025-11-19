@@ -65,8 +65,12 @@ def sync_to_github(commit_message):
             "git", "commit", "-m", commit_message
         ], capture_output=True, text=True)
         
-        # Push
-        push_result = subprocess.run(["git", "push"], capture_output=True, text=True)
+        # Push with SSH check bypass
+        # We set GIT_SSH_COMMAND to ignore strict host key checking
+        env = os.environ.copy()
+        env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
+        
+        push_result = subprocess.run(["git", "push"], capture_output=True, text=True, env=env)
         if push_result.returncode == 0:
             return True, "Synced to GitHub successfully!"
         else:
@@ -247,6 +251,8 @@ elif menu == "Export to Word":
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
 
 
 
