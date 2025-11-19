@@ -8,6 +8,8 @@ from docx import Document
 from docx.shared import Inches
 import io
 DATA_FILE = "questions.json"
+st.set_page_config(page_title="My Question Bank", layout="wide")
+
 if st.sidebar.checkbox("Debug Mode"):
     st.write("Current directory:", os.getcwd())
     st.write("File exists:", os.path.exists(DATA_FILE))
@@ -40,38 +42,48 @@ def save_questions(questions):
   
   
     
-    # ───── AUTO COMMIT & PUSH TO GITHUB (only on Streamlit Cloud) ─────
-if os.getenv("STREAMLIT_SHARING") or "streamlit" in os.getenv("SERVER_NAME", ""):
+# ───── AUTO COMMIT & PUSH TO GITHUB ─────
+def sync_to_github(commit_message):
     try:
-            import subprocess
-            # Check if we're in a git repository first
-            result = subprocess.run(["git", "status"], capture_output=True, text=True)
-            if result.returncode != 0:
-                st.warning("Not in a git repository - skipping git sync")
-            # Configure git
-            subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=False)
-            subprocess.run(["git", "config", "user.email", "bot@questionbank"], check=False)
-            
-            # Add and commit
-            subprocess.run(["git", "add", DATA_FILE], check=False)
-            commit_result = subprocess.run([
-                "git", "commit", "-m", 
-                f"Update questions.json → {len(questions)} questions [{datetime.now():%Y-%m-%d %H:%M}]"
-            ], capture_output=True, text=True)
-            
-            # Only push if commit was successful
-            if commit_result.returncode == 0:
-                push_result = subprocess.run(["git", "push"], capture_output=True, text=True)
-                if push_result.returncode != 0:
-                    st.warning(f"Git push failed: {push_result.stderr}")
-            else:
-                st.warning("No changes to commit")
-                
+        import subprocess
+        # Check if we're in a git repository
+        result = subprocess.run(["git", "status"], capture_output=True, text=True)
+        if result.returncode != 0:
+            return False, "Not in a git repository."
+
+        # Configure git (if not already configured, though usually better to rely on system config)
+        # We'll only set if strictly necessary, or maybe just skip this to avoid overwriting user config?
+        # The original code forced it. Let's keep it but maybe check first? 
+        # Actually, for a local user, we shouldn't overwrite their git config ideally.
+        # But to be safe and match original behavior's intent of "just working":
+        # subprocess.run(["git", "config", "user.name", "QuestionBank Bot"], check=False)
+        # subprocess.run(["git", "config", "user.email", "bot@questionbank"], check=False)
+        
+        # Add and commit
+        subprocess.run(["git", "add", DATA_FILE], check=False)
+        commit_result = subprocess.run([
+            "git", "commit", "-m", commit_message
+        ], capture_output=True, text=True)
+        
+        # Push
+        push_result = subprocess.run(["git", "push"], capture_output=True, text=True)
+        if push_result.returncode == 0:
+            return True, "Synced to GitHub successfully!"
+        else:
+            return False, f"Git push failed: {push_result.stderr}"
+
     except Exception as e:
-            st.warning(f"Git sync failed (data saved locally): {e}")
+        return False, f"Git sync failed: {e}"
+
+# Sidebar Sync Button
+if st.sidebar.button("Sync to GitHub Now"):
+    success, msg = sync_to_github(f"Manual sync: {len(load_questions())} questions [{datetime.now():%Y-%m-%d %H:%M}]")
+    if success:
+        st.sidebar.success(msg)
+    else:
+        st.sidebar.error(msg)
 
 # ───── Rest of the app (100% same UI, just calls save_questions which now pushes) ─────
-st.set_page_config(page_title="My Question Bank", layout="wide")
 st.title("Question Bank → Data survives refresh!")
 
 if st.sidebar.button("Force Reload from GitHub"):
@@ -111,36 +123,70 @@ if menu == "Add Question":
 # ==================== Edit / Delete ====================
 elif menu == "Edit / Delete":
     st.header("Edit or Delete Questions")
-    if not questions:
-        st.info("No questions yet")
+    
+    # Filters
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        search_term = st.text_input("Search text", "")
+    with col2:
+        all_subjects = sorted(list(set(q["subject"] for q in questions if q.get("subject"))))
+        filter_subject = st.selectbox("Filter by Subject", ["All"] + all_subjects)
+    with col3:
+        all_topics = sorted(list(set(q["topic"] for q in questions if q.get("topic"))))
+        filter_topic = st.selectbox("Filter by Topic", ["All"] + all_topics)
+
+    # Apply filters
+    filtered_questions = []
+    for q in questions:
+        # Text search
+        if search_term and search_term.lower() not in q["text"].lower():
+            continue
+        # Subject filter
+        if filter_subject != "All" and q.get("subject") != filter_subject:
+            continue
+        # Topic filter
+        if filter_topic != "All" and q.get("topic") != filter_topic:
+            continue
+        filtered_questions.append(q)
+
+    if not filtered_questions:
+        st.info("No questions match your filters")
     else:
-        for i, q in enumerate(questions[:]):
+        st.write(f"Showing {len(filtered_questions)} questions")
+        for i, q in enumerate(filtered_questions):
+            # We need to find the original index in the main list to update/delete correctly
+            original_index = questions.index(q)
+            
             with st.expander(f"Q{q['id']} • {q['subject']} • {q['topic']}"):
                 c1, c2 = st.columns([4,1])
                 with c1:
-                    new_text = st.text_area("Text", q["text"], height=100, key=f"t{i}")
-                    new_sub = st.text_input("Subject", q["subject"], key=f"s{i}")
-                    new_top = st.text_input("Topic", q["topic"], key=f"tp{i}")
+                    new_text = st.text_area("Text", q["text"], height=100, key=f"t{q['id']}")
+                    new_sub = st.text_input("Subject", q["subject"], key=f"s{q['id']}")
+                    new_top = st.text_input("Topic", q["topic"], key=f"tp{q['id']}")
                     if q["image_b64"]:
                         st.image(base64.b64decode(q["image_b64"]), width=400)
-                    new_img = st.file_uploader("Replace image", type=["png","jpg","jpeg"], key=f"i{i}")
+                    new_img = st.file_uploader("Replace image", type=["png","jpg","jpeg"], key=f"i{q['id']}")
                 with c2:
-                    if st.button("Update", key=f"u{i}"):
+                    if st.button("Update", key=f"u{q['id']}"):
                         new_b64 = q["image_b64"]
                         if new_img:
                             new_b64 = base64.b64encode(new_img.read()).decode()
-                        questions[i].update({"text": new_text, "image_b64": new_b64, "subject": new_sub, "topic": new_top})
+                        questions[original_index].update({"text": new_text, "image_b64": new_b64, "subject": new_sub, "topic": new_top})
                         save_questions(questions)
-                        st.success("Updated & synced!")
+                        st.success("Updated!")
+                        # Optional: Auto-sync on update
+                        # sync_to_github(f"Updated Q{q['id']}")
                         st.rerun()
-                    if st.button("Delete", type="primary", key=f"d{i}"):
-                        if st.session_state.get(f"confirm{i}", False):
-                            questions.pop(i)
+                    if st.button("Delete", type="primary", key=f"d{q['id']}"):
+                        if st.session_state.get(f"confirm{q['id']}", False):
+                            questions.pop(original_index)
                             save_questions(questions)
-                            st.success("Deleted & synced!")
+                            st.success("Deleted!")
+                            # Optional: Auto-sync on delete
+                            # sync_to_github(f"Deleted Q{q['id']}")
                             st.rerun()
                         else:
-                            st.session_state[f"confirm{i}"] = True
+                            st.session_state[f"confirm{q['id']}"] = True
                             st.warning("Click again to confirm delete")
 
 # ==================== Export ====================
@@ -149,21 +195,60 @@ elif menu == "Export to Word":
     if not questions:
         st.warning("No questions")
     else:
-        selected = st.multiselect("Select questions", options=[(q["id"], f"Q{q['id']} {q['subject']} - {q['topic']}") for q in questions], format_func=lambda x: x[1])
-        sel_ids = [x[0] for x in selected]
-        if st.button("Generate DOCX") and sel_ids:
+        # Filters
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            search_term = st.text_input("Search text", "", key="search_export")
+        with col2:
+            all_subjects = sorted(list(set(q["subject"] for q in questions if q.get("subject"))))
+            filter_subject = st.selectbox("Filter by Subject", ["All"] + all_subjects, key="filter_sub_export")
+        with col3:
+            all_topics = sorted(list(set(q["topic"] for q in questions if q.get("topic"))))
+            filter_topic = st.selectbox("Filter by Topic", ["All"] + all_topics, key="filter_top_export")
+
+        # Apply filters
+        filtered_questions = []
+        for q in questions:
+            if search_term and search_term.lower() not in q["text"].lower():
+                continue
+            if filter_subject != "All" and q.get("subject") != filter_subject:
+                continue
+            if filter_topic != "All" and q.get("topic") != filter_topic:
+                continue
+            filtered_questions.append(q)
+
+        # Selection
+        select_all = st.checkbox("Select All Filtered Questions")
+        default_sel = filtered_questions if select_all else []
+        
+        # We need to maintain the selection even if filters change, which is tricky.
+        # But for now, let's just let the user filter and select.
+        # If they select all, it selects all CURRENTLY filtered.
+        
+        selected = st.multiselect(
+            "Select questions to export", 
+            options=filtered_questions, 
+            default=default_sel,
+            format_func=lambda q: f"Q{q['id']} {q['subject']} - {q['topic']}"
+        )
+        
+        if st.button("Generate DOCX") and selected:
             doc = Document()
             doc.add_heading("Question Paper", 0)
-            for q in questions:
-                if q["id"] in sel_ids:
-                    doc.add_paragraph(q["text"])
-                    if q["image_b64"]:
-                        doc.add_picture(io.BytesIO(base64.b64decode(q["image_b64"])), width=Inches(5.5))
-                    doc.add_page_break()
+            # Sort selected by ID just to have some order
+            selected.sort(key=lambda x: x["id"])
+            
+            for q in selected:
+                doc.add_paragraph(q["text"])
+                if q["image_b64"]:
+                    doc.add_picture(io.BytesIO(base64.b64decode(q["image_b64"])), width=Inches(5.5))
+                doc.add_page_break()
             bio = io.BytesIO()
             doc.save(bio)
             bio.seek(0)
             st.download_button("Download DOCX", bio, f"Paper_{datetime.now().strftime('%Y%m%d')}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
 
 
 
